@@ -1,0 +1,11 @@
+.settings {
+  margin: 0px 20px;
+}
+
+div.settings > div {
+  margin: 20px 0px;
+}
+
+.slider {
+  padding: 22px 0px;
+}

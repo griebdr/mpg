@@ -1,0 +1,14 @@
+.paper {
+  margin: 'auto';
+  position: 'absolute';
+  width: 250px;
+  background-color: white;
+  box-shadow: whitesmoke;
+  outline: none;
+  padding: 50px;
+}
+
+.link {
+  text-decoration: none;
+  color: inherit;
+}

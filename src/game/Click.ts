@@ -1,6 +1,9 @@
 import { Mesh, CircleGeometry, MeshBasicMaterial, Color, Vector3 } from 'three';
-import Arrow from './Arrow';
-import { Circle } from './GamePhysics';
+
+export interface ClickSettings {
+  position?: Vector3;
+  color?: Color;
+}
 
 export class Click extends Mesh {
   private sizeChangeDistribution: (x: number) => number;
@@ -11,14 +14,16 @@ export class Click extends Mesh {
 
   readonly color: Color;
 
-  constructor(settings: { 
-    position: Vector3, color?: Color
-  }) {
+  constructor(settings?: ClickSettings) {
     super();
 
-    const { position, color } = settings;
+    settings = settings === undefined ? {} : settings;
 
-    this.sizeChangeDistribution = (x: number) => { 
+    let position = settings.position;
+    const color = settings.color;
+
+
+    this.sizeChangeDistribution = (x: number): number => { 
       if (x < 0) {
         return 0;
       } 
@@ -28,7 +33,7 @@ export class Click extends Mesh {
       return x;
     }
 
-    this.opacityChangeDistribution = (x: number) => {
+    this.opacityChangeDistribution = (x: number): number => {
       if (x < 0) {
         return 1;
       }
@@ -40,7 +45,7 @@ export class Click extends Mesh {
 
     this.changeValue = 0;
     this.changeDuration = 500;
-    this.maxSize = 0.5;
+    this.maxSize = 0.18;
 
     if (color) {
       this.color = color;    
@@ -48,7 +53,11 @@ export class Click extends Mesh {
       this.color = new Color(0x00ff00);
     }
 
-    this.geometry = new CircleGeometry(1, 50);
+    if (!position) {
+      position = new Vector3(0, 0, 0);
+    }
+
+    this.geometry = new CircleGeometry(1, 10);
     this.material = new MeshBasicMaterial();
     this.material['color'] = this.color;
     this.material.opacity = 1;
@@ -58,11 +67,26 @@ export class Click extends Mesh {
     this.update(0);
   }
 
-  update(time: number) {
+  update(time: number): void {
     this.changeValue += time / this.changeDuration;
     this.material['opacity'] = this.opacityChangeDistribution(this.changeValue);
     const scaler = Math.max(1e-5, this.sizeChangeDistribution(this.changeValue)) * this.maxSize;
     this.scale.set(scaler, scaler, 1);
+  }
+
+  set settings(settings: ClickSettings) {
+    settings = settings === undefined ? {} : settings;
+
+    const { color, position } = settings;
+    if (color) {
+      this.material['color'] = this.color;   
+    } else {
+      this.material['color'] = new Color(0x00ff00);
+    }
+
+    if (position) {
+      this.position.set(position.x, position.y, position.z);
+    }
   }
 
 }

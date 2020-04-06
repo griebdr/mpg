@@ -1,5 +1,5 @@
 import { Vector3 } from 'three';
-import Lodash from 'lodash';
+import _ from 'lodash';
 
 export interface Circle {
   position: Vector3;
@@ -20,47 +20,31 @@ export interface Bounds {
   left: number;
 }
 
-const cloneCircle = (circle: Circle): Circle => {
-  const circle2 = {} as Circle;
-  circle2.position = new Vector3(circle.position.x, circle.position.y, circle.position.z);
-  circle2.direction = new Vector3(circle.direction.x, circle.direction.y, circle.direction.z);
-  circle2.speed = circle.speed;
-  circle2.sizeChangeFunction = circle.sizeChangeFunction;
-  circle2.sizeChangeValue = circle.sizeChangeValue;
-  circle2.sizeChangeDuration = circle.sizeChangeDuration
-  circle2.minSize = circle.minSize;
-  circle2.maxSize = circle.maxSize;
-  circle2.size = circle.size;
-
-  return circle2;
-}
-
 export class GamePhysics {
-  constructor(public circles?: Circle[], public bounds?: Bounds) {
+  constructor(public circles?: Circle[], public bounds?: Bounds) { }
 
-  }
-
-  updateState(time: number) {
+  updateState(time: number): void {
     this.updatePosition(time);
     this.handleCollision();
     this.updateSize(time);
     this.separateCircles(this.circles);
   }
 
-  updatePosition(time: number) {
+
+  updatePosition(time: number): void {
     this.circles.forEach(circle => {
       const distance = time * (circle.speed / 1000);
       circle.position.add(circle.direction.clone().multiplyScalar(distance));
     });
   }
 
-  updateSize(time: number) {
+  updateSize(time: number): void {
     this.circles.forEach(circle => {
       circle.sizeChangeValue += time / circle.sizeChangeDuration;
     });
   }
 
-  handleCollision() {
+  handleCollision(): void {
     for (const circle of this.circles) {
       if (Math.abs(circle.position.x) + circle.size - this.bounds.right > 0) {
         circle.direction = new Vector3(-circle.direction.x, circle.direction.y, 0);
@@ -87,7 +71,7 @@ export class GamePhysics {
     }
   }
 
-  separateCircles(circles: Circle[]) {
+  separateCircles(circles: Circle[]): void {
     const changedCircles: Circle[] = [];
 
     for (const circle of circles) {
@@ -118,7 +102,7 @@ export class GamePhysics {
     }
 
     if (changedCircles.length > 0) {
-      this.separateCircles(Lodash.uniq(changedCircles));
+      this.separateCircles(_.uniq(changedCircles));
     }
   }
 }

@@ -9,3 +9,8 @@ div.settings > div {
 .slider {
   padding: 22px 0px;
 }
+
+.select2 {
+  margin-left: 220px;
+  background-color: aqua;
+}

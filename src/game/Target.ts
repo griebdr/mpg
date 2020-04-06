@@ -23,11 +23,14 @@ export class Target extends Group implements Circle {
   defaultColor: Color;
   selectedColor: Color;
 
-  get sizeChangeFunction() {
+  get sizeChangeFunction(): (x: number) => number {
     if (this.sizeChangeDistribution === 'constant') {
-      return (x: number) => 1;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      return (x: number): number => {
+        return 1;
+      };
     }
-    return (x: number) => {
+    return (x: number): number => {
       if (x < 0 || x > 1) {
         return 0;
       }
@@ -35,7 +38,7 @@ export class Target extends Group implements Circle {
     }
   }
 
-  constructor(settings: TargetSettings) {
+  constructor(settings?: TargetSettings) {
     super();
 
     this.defaultColor = new Color(0x143170);
@@ -45,12 +48,26 @@ export class Target extends Group implements Circle {
     const circleMaterial = new MeshBasicMaterial();
     circleMaterial.color = this.color;
     this.circle = new Mesh(new CircleGeometry(1, 50), circleMaterial);
-
     this.arrow = new Arrow();
-
+    this.isSelected2 = false;
+    this.settings = settings || {};
+  
     this.add(this.circle);
-    // this.add(this.arrow);
+    this.update();
+  }
 
+  update(): void {
+    // eslint-disable-next-line no-self-assign
+    this.size = this.size;
+    // eslint-disable-next-line no-self-assign
+    this.direction = this.direction;
+    // eslint-disable-next-line no-self-assign
+    this.speed = this.speed;
+    // eslint-disable-next-line no-self-assign
+    this.isSelected = this.isSelected;
+  }
+
+  set settings(settings: TargetSettings) {
     const { position, minSize, maxSize, sizeChangeDistribution, sizeChangeDuration, speed, direction, sizeChangeValue, showDirection } = settings;
 
     if (position !== undefined) {
@@ -78,75 +95,66 @@ export class Target extends Group implements Circle {
     }
 
     if (maxSize !== undefined) {
-      this.maxSize2 = maxSize;
+      this.maxSize = maxSize;
     } else {
-      this.maxSize2 = 1;
+      this.maxSize = 1;
     }
 
     if (speed !== undefined) {
-      this.speed2 = speed;
+      this.speed = speed;
     } else {
-      this.speed2 = 0;
+      this.speed = 0;
     }
 
     if (direction !== undefined) {
-      this.direction2 = direction;
+      this.direction = direction;
     } else {
-      this.direction2 = new Vector3(1, 1, 0);
+      this.direction = new Vector3(1, 1, 0);
     }
 
     if (sizeChangeValue) {
-      this.sizeChangeValue2 = sizeChangeValue;
+      this.sizeChangeValue = sizeChangeValue;
     } else {
-      this.sizeChangeValue2 = 0;
+      this.sizeChangeValue = 0;
     }
 
     if (showDirection !== undefined) {
       this.showDirection = showDirection;
     }
-
-    this.isSelected2 = false;
-
-    this.update();
   }
 
-  update() {
-    this.size = this.size;
-    this.direction = this.direction;
-    this.speed = this.speed;
-    this.isSelected = this.isSelected;
-  }
-
-
-  get maxSize() {
+  get maxSize(): number {
     return this.maxSize2;
   }
 
   set maxSize(maxSize: number) {
     this.maxSize2 = maxSize;
+    // eslint-disable-next-line no-self-assign
     this.size = this.size;
   }
 
-  get size() {
+  get size(): number {
     return this.sizeChangeFunction(this.sizeChangeValue) * (this.maxSize - this.minSize) + this.minSize;
   }
 
   set size(size: number) {
     size = Math.max(1e-5, size);
     this.scale.set(size, size, 1);
+    // eslint-disable-next-line no-self-assign
     this.speed = this.speed;
   }
 
-  get sizeChangeValue() {
+  get sizeChangeValue(): number {
     return this.sizeChangeValue2;
   }
 
   set sizeChangeValue(value: number) {
     this.sizeChangeValue2 = value;
+    // eslint-disable-next-line no-self-assign
     this.size = this.size;
   }
 
-  get isSelected() {
+  get isSelected(): boolean {
     return this.isSelected2;
   }
 
@@ -159,7 +167,7 @@ export class Target extends Group implements Circle {
     }
   }
 
-  get direction() {
+  get direction(): Vector3 {
     return this.direction2;
   }
 
@@ -168,14 +176,15 @@ export class Target extends Group implements Circle {
     this.direction2 = direction.normalize();
   }
 
-  get speed() {
+  get speed(): number {
     return this.speed2;
   }
 
   set speed(speed: number) {
+    this.speed2 = speed;
+
     const arrowSize = Math.max(1e-5, speed / this.size);
     this.arrow.scale.set(arrowSize, arrowSize, 1);
-    this.speed2 = speed;
   }
 
   get showDirection(): boolean {

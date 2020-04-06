@@ -1,4 +1,4 @@
-import React, { RefObject } from 'react';
+import React, { RefObject, ReactNode } from 'react';
 import Game from '../game/Game';
 import { Target } from '../game/Target';
 import GameComponent, { TargetSettings } from '../game/GameComponent';
@@ -11,37 +11,34 @@ import { Link } from 'react-router-dom';
 
 import './NormalComponent.css'
 
-interface Props {
-
-}
-
 interface State {
   open: boolean;
 }
 
-class NormalComponent extends React.Component<Props, State> {
+class NormalComponent extends React.Component<{}, State> {
   targetSettings: TargetSettings;
   pace: number;
 
-  paceChange = [[1000, 200, 0, 60 * 1000]];
-  maxSizeChange = [];
-  speedChange = [];
-  durationChange = [];
+  paceChanges = [[0.5, 0], [1, 10], [1.5, 20], [2, 30], [2.5, 45], [3, 60], [10, 60 * 5]];
+  sizeChange = [[75, 0], [40, 30], [30, 60], [15, 60 * 5]];
+  durationChange = [[3000, 0], [2500, 30], [2000, 60], [1000, 60 * 5]];
+  speedChange = [[0, 0], [75, 10], [100, 60], [300, 60 * 5]];
 
   game: Game;
   gameComponentRef: RefObject<GameComponent>;
   gameComponent: GameComponent;
 
-  timer: any;
-  targetAddedTime: number;
+  timer: number;
+  nextTargetTime: number;
+  gameStartTime: number;
 
-  constructor(props: Props) {
+  constructor(props: {}) {
     super(props);
     this.gameComponentRef = React.createRef();
     this.state = { open: false };
   }
 
-  init() {
+  init(): void {
     this.targetSettings = {
       maxSize: 100,
       sizeChangeDistribution: 'linear',
@@ -49,34 +46,36 @@ class NormalComponent extends React.Component<Props, State> {
       sizeChangeDuration: 5000,
       speed: 50,
     };
-    this.targetAddedTime = 0;
+    this.nextTargetTime = 0;
     this.pace = 1000;
   }
 
-  start() {
+  start(): void {
     this.init();
-    this.game.start();
-    this.timer = setInterval(this.updateSettings, 50);
+    this.timer = setInterval(this.updateSettings, 50) as unknown as number; 
+    this.gameStartTime = this.nextTargetTime = performance.now();
+    this.addTarget();
   }
 
-  onLifeOut = () => {
-    this.game.stop();
+  onLifeOut = (): void => {
     this.setState({ open: true });
+    this.gameComponent.reset();
+    this.gameComponent.pause();
     clearInterval(this.timer);
   }
 
-  componentDidMount() {
+  componentDidMount(): void {
     this.game = this.gameComponentRef.current.game;
     this.gameComponent = this.gameComponentRef.current;
     this.game.onLifeOut.subscribe(this.onLifeOut);
     this.start();
   }
 
-  componentWillUnmount() {
+  componentWillUnmount(): void {
     clearInterval(this.timer);
   }
 
-  addTarget = () => {
+  addTarget = (): void => {
     const targetSettings = { ...this.targetSettings };
     targetSettings.position = this.game.getRandomPosition();
     targetSettings.speed = this.gameComponent.pxToScene(targetSettings.speed);
@@ -85,42 +84,51 @@ class NormalComponent extends React.Component<Props, State> {
     this.game.targets.push(new Target(targetSettings));
   }
 
-  updateSettings = () => {
-    this.pace = this.getValue(this.game.gameTime, this.paceChange);
-    if (this.game.gameTime > this.targetAddedTime + this.pace) {
+  updateSettings = (): void => {
+    const currentTime = performance.now();
+    const gameTime = currentTime - this.gameStartTime;
+
+    this.targetSettings.maxSize = this.getSetting(gameTime, this.sizeChange);
+    this.targetSettings.sizeChangeDuration = this.getSetting(gameTime, this.durationChange);
+    this.targetSettings.speed = this.getSetting(gameTime, this.speedChange);
+
+    if (currentTime > this.nextTargetTime + this.pace) {
       this.addTarget();
-      this.targetAddedTime = this.game.gameTime;
+      this.pace = this.getSetting(gameTime, this.paceChanges);
+      this.nextTargetTime = currentTime + 1000 / this.pace;
     }
   }
 
-  getValue(time: number, changes: number[][]): number {
-    for (const change of changes) {
-      if (time > change[2] && time < change[3]) {
-        const a = (time - change[2]) / (change[3] - change[2]);
-        return a * (change[1] - change[0]) + change[0];
+  getSetting(gameTime: number, changes: Array<Array<number>>): number {
+    gameTime /= 1000;
+    for (let i = 0; i < changes.length - 1; i++) {
+      if (gameTime > changes[i][1] && gameTime < changes[i + 1][1]) {
+        const multiplier = (gameTime - changes[i][1]) / (changes[i + 1][1] - changes[i][1])
+        return changes[i][0] + (changes[i + 1][0] - changes[i][0]) * multiplier;
       }
     }
-    return changes[changes.length - 1][1];
+    return changes[changes.length - 1][0];
   }
 
-  tryAgain = () => {
+  tryAgain = (): void => {
+    this.gameComponent.resume();
     this.start();
     this.setState({ open: false });
   }
 
-  render() {
+  render(): ReactNode {
     const { open } = this.state;
 
     return (
       <div style={{ height: '100vh' }}>
         <GameComponent
           ref={this.gameComponentRef}
-          onClick={(position) => this.game.onClick(position)}
+          onClick={(position): void => this.game.onClick(position)}
         >
         </GameComponent>
         <Modal
           open={open}
-          onClose={() => this.setState({ open: false })}
+          onClose={(): void => this.setState({ open: false })}
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
         >
           <div className="paper">

@@ -1,7 +1,6 @@
 import { Mesh, Shape, ShapeGeometry, MeshBasicMaterial } from "three";
 
 export default class Heart extends Mesh {
-
   constructor() {
     super();
     const heartShape = new Shape();

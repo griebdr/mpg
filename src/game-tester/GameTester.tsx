@@ -4,7 +4,7 @@ import Drawer from '@material-ui/core/Drawer';
 import Typography from '@material-ui/core/Typography';
 import { Pause, PlayArrow, Delete } from '@material-ui/icons';
 import IconButton from '@material-ui/core/IconButton';
-import Slider from '@material-ui/lab/Slider';
+import Slider from '@material-ui/core/Slider';
 import Divider from '@material-ui/core/Divider';
 import Radio from '@material-ui/core/Radio';
 import RadioGroup from '@material-ui/core/RadioGroup';
@@ -86,7 +86,7 @@ class GameTester extends React.Component<Props, State> {
     this.gameComponent = this.gameComponentRef.current;
     this.gameComponent.gameMode = 'testing';
     this.game.showLifes = false;
-    this.game.start();
+    // this.game.start();
   }
 
 
@@ -149,11 +149,11 @@ class GameTester extends React.Component<Props, State> {
 
 
   onPause = () => {
-    this.game.pause();
+    // this.game.pause();
   }
 
   onResume = () => {
-    this.game.resume();
+    // this.game.resume();
   }
 
   onTargetSelect = (target: Target) => {

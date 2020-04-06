@@ -1,179 +1,115 @@
 import { Target } from "./Target";
-import Lodash from 'lodash';
+import _ from 'lodash';
 import * as Three from 'three';
-import { Scene, Vector3, CircleGeometry, MeshBasicMaterial, Color, Mesh, FontLoader, TextGeometry, Group } from 'three';
+import { Scene, Vector3, Color, Mesh, FontLoader, TextGeometry, Group } from 'three';
 import { GamePhysics, Bounds } from './GamePhysics'
 import helvetikerRegular from '../fonts/helvetiker_regular.typeface.json';
-import { Click } from "./Click";
-import { TargetSizeDistribution } from "./GameComponent";
+import { Click, ClickSettings } from "./Click";
+import { TargetSettings } from "./GameComponent";
 import Heart from "./Heart";
 
 import { Subject } from 'rxjs';
+import { meshPool } from "./MeshPool";
 
 export default class Game extends Scene {
-  private bounds2: Bounds;
-  timer: any;
+  private bounds2: Bounds = { bottom: 0, left: 0, right: 0, top: 0 };
+  private score2 = 0;
 
-  gameTime: number;
-  lastUpdateTime: number;
-  pauseTime: number;
-  targets: Target[];
-  clicks: Click[];
+  targets: Target[] = [];
+  clicks: Click[] = [];
 
-
-
-  targetPace: number;
-  targetSpeed: number;
-  targetSize: number;
-  targetDuration: number;
-
-  gamePhysics: GamePhysics;
-
-  paused: boolean;
-
-  hearts: Group;
-  score: number;
-  lifeCount: number;
-  onLifeOut: Subject<any>;
+  gamePhysics = new GamePhysics();
+  hearts = new Group();
+  lifeCount = 10;
+  onLifeOut = new Subject<void>();
+  scoreMesh: Mesh;
 
   constructor() {
     super();
 
     this.background = new Color(0xf9f9f9);
-    this.gamePhysics = new GamePhysics(this.targets);
-
-    this.hearts = new Group();
-    this.onLifeOut = new Subject();
-    this.add(this.hearts);
-    this.lifeCount = 10;
-
-  }
-
-  init() {
-    const handler = {
-      set: (a: any[], i: string, value: any) => {
-        if (i === 'length') {
-          return true;
-        }
-
-        if (a[i] === undefined) {
-          this.children.push(value);
-        } else {
-          const index = Lodash.findIndex(this.children, a[i])
-          this.children[index] = value;
-        }
-
-        a[i] = value;
-
-        return true;
-      },
-
-      deleteProperty: (targets: any[], prop: string) => {
-        Lodash.pullAt(this.children, Lodash.findIndex(this.children, targets[prop]));
-        Lodash.pullAt(targets, parseInt(prop));
-        return true;
-      }
-    }
-
-    this.gameTime = 0;
-    this.targets = [];
-    this.clicks = [];
-    this.paused = false;
-    this.score = 0;
-  
-    this.targets = new Proxy(this.targets, handler);
-    this.clicks = new Proxy(this.clicks, handler);
-
-
-    for (let i = 0; i < this.lifeCount; i++) {
-      const heart = new Heart();
-      this.lifes.push(heart);
-    }
-    this.bounds = this.bounds;
+    // this.add(this.hearts);
+    // this.addLifes();
     this.gamePhysics.circles = this.targets;
   }
 
-  start() {
-    this.init();
-    this.lastUpdateTime = performance.now();
-    this.timer = setInterval(() => this.update(), 0);
+  reset(): void {
+    _.remove(this.targets);
+    _.remove(this.clicks);
+    _.remove(this.children);
+
+    this.score = 0;
+
+    this.addLifes();
   }
 
-  stop() {
-    Lodash.remove(this.targets);
-    Lodash.remove(this.clicks);
-    clearInterval(this.timer);
-  }
+  update(time: number): void {
+    this.gamePhysics.updateState(time);
+    this.clicks.forEach(click => click.update(time));
 
-  pause() {
-    this.paused = true;
-  }
-
-  resume() {
-    this.lastUpdateTime = performance.now();
-    this.paused = false;
-  }
-
-  update() {
-    if (this.paused) {
-      return;
+    for (let i = 0; i < this.clicks.length; i++) {
+      const click = this.clicks[i];
+      if (click.changeValue > 1) {
+        this.removeClick(click);
+        break;
+      }
     }
 
-    const time = performance.now();
-    const timeDiff = time - this.lastUpdateTime;
-    this.gamePhysics.updateState(timeDiff);
-    this.clicks.forEach(click => click.update(timeDiff));
-    Lodash.remove(this.clicks, (click) => click.changeValue > 1);
-    Lodash.remove(this.targets, (target) => target.sizeChangeValue > 1 && target.size === 0);
-    this.gameTime += timeDiff;
-    this.lastUpdateTime = time;
+    for (let i = 0; i < this.targets.length; i++) {
+      const target = this.targets[i];
+      if (target.sizeChangeValue > 1 && target.size === 0) {
+        this.removeTarget(target);
+        break;
+      }
+    }
   }
 
-  addTarget(settings: {
-    position?: Vector3, maxSize?: number, sizeChangeValue?: number, sizeChangeDuration?: number, speed?: number, direction?: Vector3
-    sizeChangeDistribution?: TargetSizeDistribution;
-  }): Target {
-    const target = new Target(settings);
-    this.targets.push(target);
-    return target;
-  }
 
-  onClick(position: Vector3) {
-    const click = new Click({ position: position });
+  onClick(position: Vector3): void {
     const target = this.getTargetAt(position);
 
     if (target !== undefined) {
-      Lodash.remove(this.targets, target);
-      click.color.set(new Color(0x00ff00));
-      this.score++;
+      this.removeTarget(target);
+      this.addClick({ position, color: new Color(0x00ff00) });
     } else {
-      click.color.set(new Color(0xff0000));
+      this.addClick({ position, color: new Color(0xff0000) });
       this.lifes.pop();
       if (this.lifes.length === 0) {
         this.onLifeOut.next();
       }
     }
 
-    this.clicks.push(click);
+
   }
 
-  addText() {
-    const loader = new FontLoader();
-    const font = loader.parse(helvetikerRegular);
-    const geometry = new TextGeometry('123', {
-      font: font,
-      size: 1,
-      height: 0,
-    });
+  addTarget(targetSettings?: TargetSettings): Target {
+    const target = meshPool.getTarget();
+    
+    target.settings = targetSettings;
+    this.targets.push(target);
+    this.add(target);
+    return target;
+  }
 
-    const textMaterial = new Three.MeshStandardMaterial(
-      { color: 0xff0000 }
-    );
+  removeTarget(target: Target): void {
+    _.remove(this.targets, target);
+    this.remove(target);
+    meshPool.addTarget(target);
+  }
 
-    const mesh = new Mesh(geometry, textMaterial);
-    mesh.position.set(0, 0, 0);
-    mesh.scale.set(0.7, 0.7, 1);
-    this.add(mesh);
+  addClick(clickSettings: ClickSettings): Click {
+    const click = meshPool.getClick();
+    click.settings = clickSettings;
+    this.clicks.push(click);
+    this.add(click);
+    return click;
+  }
+
+  removeClick(click: Click): void {
+    _.remove(this.clicks, click);
+    this.remove(click);
+    _.remove(this.children, click);
+    meshPool.addClick(click);
   }
 
   getTargetAt(position: Vector3): Target {
@@ -182,15 +118,14 @@ export default class Game extends Scene {
         return target;
       }
     }
-
     return undefined;
   }
 
   getRandomPosition(): Vector3 {
     let position: Vector3;
     outer:
-    while (true) {
-      position = new Vector3(Lodash.random(this.bounds.left, this.bounds.right), Lodash.random(this.bounds.bottom, this.bounds.top), 0);
+    for (; ;) {
+      position = new Vector3(_.random(this.bounds.left, this.bounds.right), _.random(this.bounds.bottom, this.bounds.top), 0);
       for (const target of this.targets) {
         if (target.position.distanceTo(position) < target.size) {
           continue outer;
@@ -200,28 +135,81 @@ export default class Game extends Scene {
     }
   }
 
+  getText(text: string, position: Vector3): Mesh {
+    const loader = new FontLoader();
+    const font = loader.parse(helvetikerRegular);
+
+    const geometry = new TextGeometry(text, {
+      font,
+      size: 1,
+      height: 0,
+    });
+
+    const textMaterial = new Three.MeshStandardMaterial(
+      { color: 0xff0000 }
+    );
+
+    const mesh = new Mesh(geometry, textMaterial);
+
+    mesh.position.set(position.x, position.y, position.z);
+    mesh.scale.set(0.2, 0.2, 1);
+
+    return mesh;
+  }
+
+  addLifes(): void {
+    _.remove(this.lifes);
+
+    let x = this.bounds.right - 0.2;
+
+    for (let i = 0; i < this.lifeCount; i++) {
+      const heart = new Heart();
+      heart.position.set(x, this.bounds.top - 0.2, 0);
+      this.lifes.push(heart);
+      x -= 0.3;
+    }
+  }
+
+  set score(score: number) {
+    // this.score2 = score;
+
+
+    // if (!this.scoreMesh) {
+    //   this.scoreMesh = this.getText(this.score + '', new Vector3(this.bounds.left + 0.1, this.bounds.top - 0.25, 0));
+    //   this.add(this.scoreMesh);
+    // } else {
+    //   const geometry = new TextGeometry(this.score + '', {
+    //     font: this.font,
+    //     size: 1,
+    //     height: 0,
+    //     curveSegments: 10,
+
+    //   });
+    //   this.scoreMesh.geometry = geometry;
+    // }
+
+  }
+
+  get score(): number {
+    return this.score2;
+  }
+
   get lifes(): Heart[] {
     return this.hearts.children as Heart[];
   }
 
-  get bounds() {
+  get bounds(): Bounds {
     return this.bounds2;
   }
 
   set bounds(bounds: Bounds) {
     this.bounds2 = bounds;
-
-    let x = this.bounds.right - 0.2;
-    for (const life of this.lifes) {
-      life.position.set(x, this.bounds.top - 0.2, 0);
-      x -= 0.3;
-    }
-
+    this.addLifes();
     this.gamePhysics.bounds = bounds;
   }
 
   get showLifes(): boolean {
-    return Lodash.find(this.children, this.hearts) !== undefined;
+    return _.find(this.children, this.hearts) !== undefined;
   }
 
   set showLifes(show: boolean) {

@@ -1,15 +1,15 @@
-import React, { RefObject } from 'react';
-import Drawer from '@material-ui/core/Drawer';
-import Typography from '@material-ui/core/Typography';
-import Slider from '@material-ui/lab/Slider';
-import Divider from '@material-ui/core/Divider';
+import React, { RefObject, ReactNode } from 'react';
+
+import clsx from 'clsx';
+
 import Game from '../game/Game';
 import { Target } from '../game/Target';
 import GameComponent, { TargetSettings } from '../game/GameComponent';
 import './CustomComponent.css';
-import Lodash from 'lodash';
+import _ from 'lodash';
 
-import { withStyles, WithStyles, createStyles } from '@material-ui/core';
+import { IconButton, withStyles, WithStyles, createStyles, Select, MenuItem, InputLabel, Drawer, FormControl, TextField, FormLabel, FormGroup, InputAdornment } from '@material-ui/core';
+import { ArrowBack, ArrowForward } from '@material-ui/icons'
 import { Vector3 } from 'three';
 
 const drawerWidth = 240;
@@ -23,27 +23,59 @@ const styles = createStyles({
     height: '100vh',
     marginLeft: drawerWidth,
   },
+  mainContentShift: {
+    marginLeft: 0,
+  },
+  settingsControl: {
+    padding: 12,
+  },
+  settingInput: {
+    margin: '12px 0px',
+  },
+
 })
 
-interface Props extends WithStyles<typeof styles> {
-
-}
+type Props = WithStyles<typeof styles>
 
 interface State {
   open: boolean;
   pace: number;
+  difficultyLevel: number;
   targetSettings: TargetSettings;
 }
 
-class CustomComponent extends React.Component<Props, State> {
-  selectedTarget: Target;
-  targetSettings: TargetSettings;
-  game: Game;
+interface DifficultySetting {
+  pace: number;
+  size: number;
+  duration: number;
+  speed: number;
+}
 
+class CustomComponent extends React.Component<Props, State> {
   gameComponentRef: RefObject<GameComponent>;
   gameComponent: GameComponent;
+  game: Game;
 
-  timer: any;
+  selectedTarget: Target;
+  targetSettings: TargetSettings;
+
+  timer: unknown;
+
+  difficultyLevelValues = new Map<number, DifficultySetting>(
+    [
+      [1, { pace: 0, size: 0, duration: 0, speed: 0 }],
+      [2, { pace: 0, size: 0, duration: 0, speed: 0 }],
+      [3, { pace: 0, size: 0, duration: 0, speed: 0 }],
+      [4, { pace: 0, size: 0, duration: 0, speed: 0 }],
+      [5, { pace: 2, size: 30, duration: 2.5, speed: 50 }],
+      [6, { pace: 0, size: 0, duration: 0, speed: 0 }],
+      [7, { pace: 0, size: 0, duration: 0, speed: 0 }],
+      [8, { pace: 0, size: 0, duration: 0, speed: 0 }],
+      [9, { pace: 0, size: 0, duration: 0, speed: 0 }],
+      [10, { pace: 0, size: 0, duration: 0, speed: 0 }],
+    ]
+  );
+
 
   constructor(props: Props) {
     super(props);
@@ -52,121 +84,149 @@ class CustomComponent extends React.Component<Props, State> {
       maxSize: 100,
       sizeChangeDistribution: 'linear',
       sizeChangeValue: 0,
-      sizeChangeDuration: 5000,
+      sizeChangeDuration: 5,
       speed: 50,
     };
     this.state = {
       open: true,
-      pace: 1000,
+      pace: 1,
+      difficultyLevel: 5,
       targetSettings: this.targetSettings,
     };
   }
 
-  componentDidMount() {
+  componentDidMount(): void {
     this.game = this.gameComponentRef.current.game;
     this.gameComponent = this.gameComponentRef.current;
     this.gameComponent.gameMode = 'normal';
     this.game.showLifes = false;
-    this.game.start();
-    this.timer = setInterval(this.addTarget, this.state.pace);
+    this.timer = setInterval(this.addTarget, this.state.pace * 1000);
+    this.onDifficultyLevelChange(this.state.difficultyLevel);
   }
 
-  componentWillUnmount() {
-    clearInterval(this.timer);
+  componentWillUnmount(): void {
+    clearInterval(this.timer as number);
   }
 
-  addTarget = () => {
+  addTarget = (): void => {
     const targetSettings = { ...this.targetSettings };
     targetSettings.position = this.game.getRandomPosition();
     targetSettings.speed = this.gameComponent.pxToScene(targetSettings.speed);
     targetSettings.maxSize = this.gameComponent.pxToScene(targetSettings.maxSize);
-    targetSettings.direction = new Vector3(Lodash.random(-1, 1, true), Lodash.random(-1, 1, true), 0);
-    this.game.targets.push(new Target(targetSettings));
+    targetSettings.sizeChangeDuration *= 1000;
+    targetSettings.direction = new Vector3(_.random(-1, 1, true), _.random(-1, 1, true), 0);
+    this.game.addTarget(targetSettings);
   }
 
-  onPaceChange = (event: React.ChangeEvent, value: number) => {
-    this.setState({ pace: value });
-    clearInterval(this.timer);
+  onDifficultyLevelChange = (difficultyLevel: number): void => {
+    this.setState({ difficultyLevel: difficultyLevel });
 
-    this.timer = setInterval(this.addTarget, this.state.pace);
+    this.onPaceChange(this.difficultyLevelValues.get(difficultyLevel).pace);
+    this.onMaxSizeChange(this.difficultyLevelValues.get(difficultyLevel).size);
+    this.onSizeChangeDurationChange(this.difficultyLevelValues.get(difficultyLevel).duration);
+    this.onSpeedChange(this.difficultyLevelValues.get(difficultyLevel).speed);
   }
 
-  onMaxSizeChange = (event: React.ChangeEvent, value: number) => {
-    this.targetSettings.maxSize = value;
+  onPaceChange = (pace: number): void => {
+    this.setState({ pace: pace });
+
+    if (!isNaN(pace)) {
+      clearInterval(this.timer as number);
+      if (pace > 0) {
+        this.timer = setInterval(this.addTarget, 1000 / pace);
+      }
+    }
+  }
+
+  onMaxSizeChange = (size: number): void => {
+    this.targetSettings.maxSize = size;
     this.setState({ targetSettings: this.targetSettings });
   }
 
-  onSpeedChange = (event: React.ChangeEvent, value: number) => {
-    this.targetSettings.speed = value;
+  onSpeedChange = (speed: number): void => {
+    this.targetSettings.speed = speed;
     this.setState({ targetSettings: this.targetSettings });
   }
 
-  onSizeChangeDurationChange = (event: React.ChangeEvent, value: number) => {
-    this.targetSettings.sizeChangeDuration = value;
+  onSizeChangeDurationChange = (duration: number): void => {
+    this.targetSettings.sizeChangeDuration = duration;
     this.setState({ targetSettings: this.targetSettings });
   }
 
-  render() {
+  hideDrawer = (): void => {
+    this.setState({ open: false });
+    setTimeout(this.gameComponent.onWindowResize, 0);
+  }
+
+  showDrawer = (): void => {
+    this.setState({ open: true });
+    setTimeout(this.gameComponent.onWindowResize, 0);
+  }
+
+  render(): ReactNode {
     const { maxSize, speed, sizeChangeDuration } = this.state.targetSettings;
-    const { open, pace } = this.state;
+    const { open, pace, difficultyLevel } = this.state;
     const { classes } = this.props;
 
     return (
       <div>
+        <IconButton style={{ position: 'absolute' }} onClick={this.showDrawer}><ArrowForward /></IconButton>
         <Drawer classes={{ paper: classes.drawerPaper }} variant="persistent" anchor="left" open={open}>
-          <div className="settings">
-            <div>
-              <Typography id="label">Pace</Typography>
-              <Slider
-                className="slider"
-                min={2000}
-                max={200}
-                step={-10}
-                disabled={false}
-                aria-labelledby="label"
-                value={pace}
-                onChange={this.onPaceChange}
-              />
-            </div>
-            <div>
-              <Typography id="label">Max size</Typography>
-              <Slider
-                className="slider"
-                min={0}
-                max={200}
-                disabled={false}
-                aria-labelledby="label"
-                value={maxSize}
-                onChange={this.onMaxSizeChange}
-              />
-            </div>
-            <div>
-              <Typography id="label">Speed</Typography>
-              <Slider
-                className="slider"
-                min={0}
-                max={200}
-                value={speed}
-                onChange={this.onSpeedChange}
-              />
-            </div>
-            <div>
-              <Typography id="label">Size change duration</Typography>
-              <Slider
-                className="slider"
-                min={1000}
-                max={20000}
-                step={10}
-                value={sizeChangeDuration}
-                onChange={this.onSizeChangeDurationChange}
-              />
-            </div>
+          <div>
+            <IconButton
+              onClick={this.hideDrawer}
+            >
+              <ArrowBack />
+            </IconButton>
           </div>
+          <FormControl style={{ margin: 20, marginBottom: 40 }} variant="outlined">
+            <InputLabel id="difficulty">Difficulty Level</InputLabel>
+            <Select
+              labelId="difficulty" value={difficultyLevel} label="Difficulty Level"
+              onChange={(e): void => this.onDifficultyLevelChange(Number.parseFloat(e.target.value as string))}>
+              {Array.from(this.difficultyLevelValues).map(([key]) => <MenuItem key={key} value={key}>{key}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <FormGroup className={classes.settingsControl}>
+            <FormLabel>Settings</FormLabel>
+            <TextField
+              className={classes.settingInput} variant="outlined" label="Pace" type="number"
+              value={pace}
+              InputProps={{
+                endAdornment: <InputAdornment position="end">target/s</InputAdornment>,
+              }}
+              onChange={(e): void => this.onPaceChange(Number.parseFloat(e.target.value))}
+            />
+            <TextField
+              className={classes.settingInput} variant="outlined" label="Size" type="number"
+              value={maxSize}
+              InputProps={{
+                endAdornment: <InputAdornment position="end">px</InputAdornment>,
+              }}
+              onChange={(e): void => this.onMaxSizeChange(Number.parseFloat(e.target.value))}
+            />
+            <TextField
+              className={classes.settingInput} variant="outlined" label="Duration" type="number"
+              value={sizeChangeDuration}
+              InputProps={{
+                endAdornment: <InputAdornment position="end">s</InputAdornment>,
+              }}
+              onChange={(e): void => this.onSizeChangeDurationChange(Number.parseFloat(e.target.value))}
+            />
+            <TextField
+              className={classes.settingInput} variant="outlined" label="Speed" type="number"
+              value={speed}
+              InputProps={{
+                endAdornment: <InputAdornment position="end">px/s</InputAdornment>,
+              }}
+              onChange={(e): void => this.onSpeedChange(Number.parseFloat(e.target.value))}
+            />
+          </FormGroup>
         </Drawer>
-        <main className={classes.mainContent}>
+        <main className={clsx(classes.mainContent, {[classes.mainContentShift]: !open})}>
           <GameComponent
             ref={this.gameComponentRef}
-            onClick={(position) => this.game.onClick(position)}
+            onClick={(position): void => this.game.onClick(position)}
           >
           </GameComponent>
         </main>

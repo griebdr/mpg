@@ -25,5 +25,7 @@
     "react",
     "@typescript-eslint"
   ],
-  "rules": {}
+  "rules": {
+    // "no-self-assign": "off"
+  }
 }

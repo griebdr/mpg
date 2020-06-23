@@ -1,5 +1,5 @@
-import Lodash from 'lodash';
-import React, { RefObject } from 'react';
+// import _ from 'lodash';
+import React, { RefObject, ReactNode } from 'react';
 import Drawer from '@material-ui/core/Drawer';
 import Typography from '@material-ui/core/Typography';
 import { Pause, PlayArrow, Delete } from '@material-ui/icons';
@@ -15,9 +15,8 @@ import RadioButtonCheckedIcon from '@material-ui/icons/RadioButtonChecked';
 import { withStyles, WithStyles, createStyles } from '@material-ui/core';
 
 import './GameTester.css'
-import GameComponent, { TargetSettings, GameMode } from '../game/GameComponent';
-import { TargetSizeDistribution } from '../game/GameComponent';
-import { Target } from '../game/Target';
+import GameComponent from '../game/GameComponent';
+import { Target, TargetSizeDistribution, TargetSettings } from '../game/Target';
 import Game from '../game/Game';
 import { Vector3 } from 'three';
 
@@ -45,14 +44,13 @@ const styles = createStyles({
   }
 });
 
-interface Props extends WithStyles<typeof styles> {
+type Props = WithStyles<typeof styles>;
 
-}
+
 
 interface State {
   open: boolean;
   targetSettings: TargetSettings;
-  gameMode: GameMode;
 }
 
 class GameTester extends React.Component<Props, State> {
@@ -63,104 +61,98 @@ class GameTester extends React.Component<Props, State> {
   gameComponentRef: RefObject<GameComponent>;
   gameComponent: GameComponent;
 
+  ignoreClick = false;
+
   constructor(props: Props) {
     super(props);
     this.gameComponentRef = React.createRef();
     this.targetSettings = {
-      maxSize: 100,
-      sizeChangeDistribution: 'linear',
+      maxSize: 20,
+      sizeChangeDistribution: 'Constant',
       sizeChangeValue: 0.5,
-      sizeChangeDuration: 10500,
-      speed: 100,
+      sizeChangeDuration: 6000,
+      speed: 10,
+      repeating: true,
     };
 
     this.state = {
       open: true,
       targetSettings: this.targetSettings,
-      gameMode: 'testing',
     };
   }
 
-  componentDidMount() {
-    this.game = this.gameComponentRef.current.game;
+  componentDidMount(): void {
     this.gameComponent = this.gameComponentRef.current;
-    this.gameComponent.gameMode = 'testing';
-    this.game.showLifes = false;
-    // this.game.start();
+    this.game = this.gameComponent.game;
   }
 
-
-
-  onMaxSizeChange = (event: React.ChangeEvent, value: number) => {
+  onMaxSizeChange = (event: React.ChangeEvent, value: number): void => {
     this.targetSettings.maxSize = value;
     this.setState({ targetSettings: this.targetSettings });
+
     if (this.selectedTarget !== undefined) {
-      this.selectedTarget.maxSize = this.gameComponentRef.current.pxToScene(value);
+      this.selectedTarget.maxSize = this.gameComponent.toSceneSize(value);
     }
   };
 
-  onSizeChangeValueChange = (event: React.ChangeEvent, value: number) => {
+  onSizeChangeValueChange = (event: React.ChangeEvent, value: number): void => {
     this.targetSettings.sizeChangeValue = value;
     this.setState({ targetSettings: this.targetSettings });
-    if (this.selectedTarget !== undefined) {
+
+    if (this.selectedTarget) {
       this.selectedTarget.sizeChangeValue = value;
     }
   }
 
-  onSpeedChange = (event: React.ChangeEvent, value: number) => {
+  onSpeedChange = (event: React.ChangeEvent, value: number): void => {
     this.targetSettings.speed = value;
     this.setState({ targetSettings: this.targetSettings });
-    if (this.selectedTarget !== undefined) {
-      this.selectedTarget.speed = this.gameComponentRef.current.pxToScene(value);
+
+    if (this.selectedTarget) {
+      this.selectedTarget.speed = this.gameComponent.toSceneSize(value);
     }
   }
 
-  onSizeChangeDurationChange = (event: React.ChangeEvent, value: number) => {
+  onSizeChangeDurationChange = (event: React.ChangeEvent, value: number): void => {
     this.targetSettings.sizeChangeDuration = value;
     this.setState({ targetSettings: this.targetSettings });
-    if (this.selectedTarget !== undefined) {
+
+    if (this.selectedTarget) {
       this.selectedTarget.sizeChangeDuration = value;
     }
   }
 
-  sizeChangeDistributionChange = (event: React.ChangeEvent, value: TargetSizeDistribution) => {
+  sizeChangeDistributionChange = (event: React.ChangeEvent, value: TargetSizeDistribution): void => {
     this.targetSettings.sizeChangeDistribution = value;
     this.setState({ targetSettings: this.targetSettings });
 
-    if (this.selectedTarget !== undefined) {
+    if (this.selectedTarget) {
       this.selectedTarget.sizeChangeDistribution = value;
     }
   }
 
-  onGameModeChange = (event: React.ChangeEvent, value: GameMode) => {
-    this.setState({ gameMode: value });
-    this.setState({ targetSettings: this.targetSettings });
-    this.gameComponentRef.current.gameMode = value;
-  }
-
-  onDelete = () => {
+  onDelete = (): void => {
     if (this.selectedTarget) {
-      Lodash.remove(this.game.targets, this.selectedTarget);
+      this.game.removeTarget(this.selectedTarget);
     } else {
-      Lodash.remove(this.game.targets, { isSelected: false });
+      this.game.targets.forEach(target => this.game.removeTarget(target));
     }
     this.selectedTarget = undefined;
   }
 
-
-  onPause = () => {
-    // this.game.pause();
+  onPause = (): void => {
+    this.gameComponent.pause();
   }
 
-  onResume = () => {
-    // this.game.resume();
+  onResume = (): void => {
+    this.gameComponent.resume();
   }
 
-  onTargetSelect = (target: Target) => {
-    this.targetSettings.maxSize = this.gameComponentRef.current.sceneToPx(target.maxSize);
+  onTargetSelect = (target: Target): void => {
+    this.targetSettings.maxSize = this.gameComponent.fromSceneSize(target.maxSize);
     this.targetSettings.sizeChangeDuration = target.sizeChangeDuration;
     this.targetSettings.sizeChangeValue = target.sizeChangeValue;
-    this.targetSettings.speed = this.gameComponentRef.current.sceneToPx(target.speed);
+    this.targetSettings.speed = this.gameComponent.fromSceneSpeed(target.speed);
     this.targetSettings.sizeChangeDistribution = target.sizeChangeDistribution;
 
     this.setState({
@@ -175,65 +167,59 @@ class GameTester extends React.Component<Props, State> {
     this.selectedTarget.isSelected = true;
   }
 
-  onTargetClick = (target: Target, position: Vector3) => {
-    switch (this.state.gameMode) {
-      case 'normal':
-        this.game.onClick(position);
-        break;
-      case 'testing':
-        if (target === this.selectedTarget) {
-          this.selectedTarget.isSelected = false;
-          this.selectedTarget = undefined;
-        } else {
-          this.onTargetSelect(target);
-        }
-        break;
+  onTargetClick = (target: Target): void => {
+    if (this.ignoreClick) {
+      this.ignoreClick = false;
+      return;
+    }
+
+    if (target === this.selectedTarget) {
+      this.selectedTarget.isSelected = false;
+      this.selectedTarget = undefined;
+    } else {
+      this.onTargetSelect(target);
     }
   }
 
-  onBackgroundClick = (position: Vector3) => {
-    switch (this.state.gameMode) {
-      case 'normal':
-        this.game.onClick(position);
-        break;
-      case 'testing':
-        if (this.selectedTarget === undefined) {
-          const targetSettings = { ...this.targetSettings };
-          targetSettings.maxSize = this.gameComponent.pxToScene(targetSettings.maxSize);
-          targetSettings.speed = this.gameComponent.pxToScene(targetSettings.speed);
-          targetSettings.position = position;
-          targetSettings.showDirection = true;
-          const target = new Target(targetSettings);
-          this.game.targets.push(target);
-        } else {
-          this.selectedTarget.isSelected = false;
-          this.selectedTarget = undefined;
-        }
-        break;
-      default:
-        break;
+  onBackgroundClick = (position: Vector3): void => {
+    if (this.ignoreClick) {
+      this.ignoreClick = false;
+      return;
     }
 
+    if (this.selectedTarget === undefined) {
+      const targetSettings = { ...this.targetSettings };
+      targetSettings.maxSize = this.gameComponent.toSceneSize(targetSettings.maxSize);
+      targetSettings.speed = this.gameComponent.toSceneSpeed(targetSettings.speed);
+      targetSettings.pos = position;
+      targetSettings.showDirection = true;
+      this.game.addTarget(targetSettings);
+    } else {
+      this.selectedTarget.isSelected = false;
+      this.selectedTarget = undefined;
+    }
   }
 
-  onTargetDrag = (target: Target, dragVec: Vector3) => {
+  onTargetDrag = (target: Target, dragVec: Vector3): void => {
     target.position.add(dragVec);
+    this.ignoreClick = true;
   }
 
-  onDirectionDrag = (target: Target, dragVec: Vector3) => {
+  onDirectionDrag = (target: Target, dragVec: Vector3): void => {
     const directionEnd = target.position.clone().add(target.direction.clone().multiplyScalar(target.speed));
     target.direction = directionEnd.clone().add(dragVec).sub(target.position);
     target.speed = target.position.distanceTo(directionEnd.clone().add(dragVec));
+    this.ignoreClick = true;
   }
 
-  render() {
+  render(): ReactNode {
     const { classes } = this.props;
     const { maxSize, speed, sizeChangeDistribution, sizeChangeDuration, sizeChangeValue } = this.state.targetSettings;
-    const { gameMode } = this.state;
+    const { open } = this.state;
 
     return (
       <div>
-        <Drawer classes={{ paper: classes.drawerPaper }} variant="persistent" anchor="left" open={this.state.open}>
+        <Drawer classes={{ paper: classes.drawerPaper }} variant="persistent" anchor="left" open={open}>
           <div className={classes.buttonContainer}>
             <IconButton onClick={this.onDelete} color="primary"><Delete /></IconButton>
           </div>
@@ -242,11 +228,9 @@ class GameTester extends React.Component<Props, State> {
             <div>
               <Typography id="label">Max size</Typography>
               <Slider
-                min={0}
-                max={200}
-                disabled={false}
+                min={4}
+                max={80}
                 className={classes.slider}
-                aria-labelledby="label"
                 value={maxSize}
                 onChange={this.onMaxSizeChange}
               />
@@ -257,9 +241,7 @@ class GameTester extends React.Component<Props, State> {
                 min={0}
                 max={1}
                 step={0.01}
-                disabled={false}
                 className={classes.slider}
-                aria-labelledby="label"
                 value={sizeChangeValue}
                 onChange={this.onSizeChangeValueChange}
               />
@@ -268,11 +250,9 @@ class GameTester extends React.Component<Props, State> {
               <Typography id="label">Speed</Typography>
               <Slider
                 min={0}
-                max={500}
+                max={100}
                 step={1}
-                disabled={false}
                 className={classes.slider}
-                aria-labelledby="label"
                 value={speed}
                 onChange={this.onSpeedChange}
               />
@@ -283,9 +263,7 @@ class GameTester extends React.Component<Props, State> {
                 min={1000}
                 max={20000}
                 step={10}
-                disabled={false}
                 className={classes.slider}
-                aria-labelledby="label"
                 value={sizeChangeDuration}
                 onChange={this.onSizeChangeDurationChange}
               />
@@ -298,47 +276,22 @@ class GameTester extends React.Component<Props, State> {
                   onChange={this.sizeChangeDistributionChange}
                 >
                   <FormControlLabel
-                    value="constant"
+                    value="Constant"
                     control=
                     {<Radio
                       icon={<RadioButtonUncheckedIcon fontSize="small" />}
                       checkedIcon={<RadioButtonCheckedIcon fontSize="small" />}
+  
                     />}
                     label="Constant" />
                   <FormControlLabel
-                    value="linear"
+                    value="Linear"
                     control=
                     {<Radio
                       icon={<RadioButtonUncheckedIcon fontSize="small" />}
                       checkedIcon={<RadioButtonCheckedIcon fontSize="small" />}
                     />}
                     label="Linear" />
-                </RadioGroup>
-              </FormControl>
-            </div>
-            <div>
-              <FormControl>
-                <Typography id="label">Game mode</Typography>
-                <RadioGroup
-                  value={gameMode}
-                  onChange={this.onGameModeChange}
-                >
-                  <FormControlLabel
-                    value="normal"
-                    control=
-                    {<Radio
-                      icon={<RadioButtonUncheckedIcon fontSize="small" />}
-                      checkedIcon={<RadioButtonCheckedIcon fontSize="small" />}
-                    />}
-                    label="Normal" />
-                  <FormControlLabel
-                    value="testing"
-                    control=
-                    {<Radio
-                      icon={<RadioButtonUncheckedIcon fontSize="small" />}
-                      checkedIcon={<RadioButtonCheckedIcon fontSize="small" />}
-                    />}
-                    label="Testing" />
                 </RadioGroup>
               </FormControl>
             </div>
@@ -353,9 +306,9 @@ class GameTester extends React.Component<Props, State> {
           <GameComponent
             ref={this.gameComponentRef}
             onTargetClick={this.onTargetClick}
+            onBackgroundClick={this.onBackgroundClick}
             onTargetDrag={this.onTargetDrag}
             onDirectionDrag={this.onDirectionDrag}
-            onBackgroundClick={this.onBackgroundClick}
           >
           </GameComponent>
         </main>

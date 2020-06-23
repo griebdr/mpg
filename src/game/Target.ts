@@ -1,136 +1,89 @@
-import { Mesh, Vector3, Group, CircleGeometry, MeshBasicMaterial, Vector2, Color } from 'three';
+/* eslint-disable no-self-assign */
+import { Mesh, Vector3, Vector2, Group, CircleGeometry, MeshBasicMaterial, Color } from 'three';
+import _ from 'lodash';
+
 import Arrow from './Arrow';
-import { Circle } from './GamePhysics';
-import { TargetSizeDistribution, TargetSettings } from './GameComponent';
-import Lodash from 'lodash';
 
-export class Target extends Group implements Circle {
-  private direction2: Vector3;
-  private speed2: number;
-  private maxSize2: number;
-  private sizeChangeValue2: number;
-  private sizeChangeDuration2: number;
+const circleGeomety = new CircleGeometry(1, 50);
 
-  sizeChangeDistribution: TargetSizeDistribution;
-  sizeChangeDuration: number;
-  minSize: number;
+export type TargetSizeDistribution = 'Linear' | 'Constant'
 
-  circle: Mesh;
-  arrow: Arrow;
+export interface TargetSettings {
+  pos?: Vector3;
+  minSize?: number;
+  maxSize?: number;
+  sizeChangeDuration?: number;
+  sizeChangeValue?: number;
+  sizeChangeDistribution?: TargetSizeDistribution;
+  speed?: number;
+  direction?: Vector3;
+  color?: Color;
+  showDirection?: boolean;
+  isSelected?: boolean;
+  repeating?: boolean;
+}
 
-  private isSelected2: boolean;
-  readonly color: Color;
-  defaultColor: Color;
-  selectedColor: Color;
+export class Target extends Group {
+  private settings: TargetSettings = {};
 
-  get sizeChangeFunction(): (x: number) => number {
-    if (this.sizeChangeDistribution === 'constant') {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      return (x: number): number => {
-        return 1;
-      };
-    }
-    return (x: number): number => {
-      if (x < 0 || x > 1) {
-        return 0;
-      }
-      return 1 - Math.abs(2 * x - 1);
-    }
-  }
+  private circleMesh: Mesh;
+  private arrow: Arrow;
+
+  private defaultColor = new Color(0x143170);
+  private selectedColor = new Color(0x7caaf4);
 
   constructor(settings?: TargetSettings) {
     super();
 
-    this.defaultColor = new Color(0x143170);
-    this.selectedColor = new Color(0x7caaf4);
-    this.color = new Color(this.defaultColor);
-
-    const circleMaterial = new MeshBasicMaterial();
-    circleMaterial.color = this.color;
-    this.circle = new Mesh(new CircleGeometry(1, 50), circleMaterial);
+    this.circleMesh = new Mesh(circleGeomety, new MeshBasicMaterial());
     this.arrow = new Arrow();
-    this.isSelected2 = false;
-    this.settings = settings || {};
-  
-    this.add(this.circle);
-    this.update();
+    this.add(this.circleMesh);
+
+    this.init();
+    this.setSettings(settings);
   }
 
-  update(): void {
-    // eslint-disable-next-line no-self-assign
-    this.size = this.size;
-    // eslint-disable-next-line no-self-assign
-    this.direction = this.direction;
-    // eslint-disable-next-line no-self-assign
-    this.speed = this.speed;
-    // eslint-disable-next-line no-self-assign
-    this.isSelected = this.isSelected;
+  init(): void {
+    this.settings.pos = this.position;
+    this.pos = new Vector3(0, 0, 0);
+    this.minSize = 0;
+    this.maxSize = 1;
+    this.sizeChangeDuration = 2;
+    this.sizeChangeValue = 0;
+    this.sizeChangeDistribution = 'Linear';
+    this.speed = 0;
+    this.direction = new Vector3(0, 0, 0);
+    this.showDirection = false;
+    this.color = this.defaultColor;
+    this.repeating = false;
   }
 
-  set settings(settings: TargetSettings) {
-    const { position, minSize, maxSize, sizeChangeDistribution, sizeChangeDuration, speed, direction, sizeChangeValue, showDirection } = settings;
+  updatePosition(time: number): void {
+    const distance = time * (this.speed / 1000);
+    this.position.add(this.direction.clone().multiplyScalar(distance));
+  }
 
-    if (position !== undefined) {
-      this.position.set(position.x, position.y, position.z);
-    } else {
-      this.position.set(0, 0, 0);
-    }
-
-    if (sizeChangeDistribution !== undefined) {
-      this.sizeChangeDistribution = sizeChangeDistribution;
-    } else {
-      this.sizeChangeDistribution = 'constant';
-    }
-
-    if (sizeChangeDuration !== undefined) {
-      this.sizeChangeDuration = sizeChangeDuration;
-    } else {
-      this.sizeChangeDuration = Infinity;
-    }
-
-    if (minSize !== undefined) {
-      this.minSize = minSize;
-    } else {
-      this.minSize = 0;
-    }
-
-    if (maxSize !== undefined) {
-      this.maxSize = maxSize;
-    } else {
-      this.maxSize = 1;
-    }
-
-    if (speed !== undefined) {
-      this.speed = speed;
-    } else {
-      this.speed = 0;
-    }
-
-    if (direction !== undefined) {
-      this.direction = direction;
-    } else {
-      this.direction = new Vector3(1, 1, 0);
-    }
-
-    if (sizeChangeValue) {
-      this.sizeChangeValue = sizeChangeValue;
-    } else {
-      this.sizeChangeValue = 0;
-    }
-
-    if (showDirection !== undefined) {
-      this.showDirection = showDirection;
+  updateSize(time: number): void {
+    if (this.sizeChangeDistribution === 'Linear') {
+      this.sizeChangeValue += time / this.sizeChangeDuration;
     }
   }
 
-  get maxSize(): number {
-    return this.maxSize2;
+  resetSettings(settings?: TargetSettings): void {
+    this.init();
+    this.setSettings(settings);
   }
 
-  set maxSize(maxSize: number) {
-    this.maxSize2 = maxSize;
-    // eslint-disable-next-line no-self-assign
-    this.size = this.size;
+  setSettings(settings: TargetSettings): void {
+    _.forOwn(settings, (value, key) => this[key] = value);
+  }
+
+  get pos(): Vector3 {
+    return this.settings.pos;
+  }
+
+  set pos(pos: Vector3) {
+    this.settings.pos.set(pos.x, pos.y, pos.z);
   }
 
   get size(): number {
@@ -140,26 +93,110 @@ export class Target extends Group implements Circle {
   set size(size: number) {
     size = Math.max(1e-5, size);
     this.scale.set(size, size, 1);
-    // eslint-disable-next-line no-self-assign
     this.speed = this.speed;
   }
 
-  get sizeChangeValue(): number {
-    return this.sizeChangeValue2;
+  get sizeChangeFunction(): (x: number) => number {
+    return (x: number): number => {
+      if (this.sizeChangeDistribution === 'Linear') {
+        if (x < 0 || x > 1) {
+          return 0;
+        }
+        return 1 - Math.abs(2 * x - 1);
+      }
+      return 1;
+    };
   }
 
-  set sizeChangeValue(value: number) {
-    this.sizeChangeValue2 = value;
-    // eslint-disable-next-line no-self-assign
+  get minSize(): number {
+    return this.settings.minSize;
+  }
+
+  set minSize(minSize: number) {
+    this.settings.minSize = minSize;
     this.size = this.size;
   }
 
+  get maxSize(): number {
+    return this.settings.maxSize;
+  }
+
+  set maxSize(maxSize: number) {
+    this.settings.maxSize = maxSize;
+    this.size = this.size;
+  }
+
+  get sizeChangeValue(): number {
+    return this.settings.sizeChangeValue;
+  }
+
+  set sizeChangeValue(value: number) {
+    if (value >= 1) {
+      if (this.repeating) {
+        this.sizeChangeValue = 0;
+        return;
+      } else {
+        this.visible = false;
+      }
+    } else {
+      this.visible = true;
+    }
+
+    this.settings.sizeChangeValue = value;
+    this.size = this.size;
+  }
+
+  get sizeChangeDistribution(): TargetSizeDistribution {
+    return this.settings.sizeChangeDistribution;
+  }
+
+  set sizeChangeDistribution(sizeChangeDistribution: TargetSizeDistribution) {
+    this.settings.sizeChangeDistribution = sizeChangeDistribution;
+    this.size = this.size;
+  }
+
+  get sizeChangeDuration(): number {
+    return this.settings.sizeChangeDuration;
+  }
+
+  set sizeChangeDuration(sizeChangeDuration: number) {
+    this.settings.sizeChangeDuration = sizeChangeDuration;
+    this.size = this.size;
+  }
+
+  get direction(): Vector3 {
+    return this.settings.direction;
+  }
+
+  set direction(direction: Vector3) {
+    this.settings.direction = direction.normalize();
+    this.arrow.setRotationFromAxisAngle(new Vector3(0, 0, 1), new Vector2(direction.x, direction.y).angle());
+  }
+
+  get speed(): number {
+    return this.settings.speed;
+  }
+
+  set speed(speed: number) {
+    this.settings.speed = speed;
+    const arrowSize = Math.max(1e-5, speed / this.size);
+    this.arrow.scale.set(arrowSize, arrowSize, 1);
+  }
+
+  get color(): Color {
+    return (this.circleMesh.material as MeshBasicMaterial).color;
+  }
+
+  set color(color: Color) {
+    (this.circleMesh.material as MeshBasicMaterial).color = new Color(color);
+  }
+
   get isSelected(): boolean {
-    return this.isSelected2;
+    return this.settings.isSelected;
   }
 
   set isSelected(isSelected: boolean) {
-    this.isSelected2 = isSelected;
+    this.settings.isSelected = isSelected;
     if (isSelected === true) {
       this.color.set(this.selectedColor);
     } else {
@@ -167,36 +204,24 @@ export class Target extends Group implements Circle {
     }
   }
 
-  get direction(): Vector3 {
-    return this.direction2;
-  }
-
-  set direction(direction: Vector3) {
-    this.arrow.setRotationFromAxisAngle(new Vector3(0, 0, 1), new Vector2(direction.x, direction.y).angle());
-    this.direction2 = direction.normalize();
-  }
-
-  get speed(): number {
-    return this.speed2;
-  }
-
-  set speed(speed: number) {
-    this.speed2 = speed;
-
-    const arrowSize = Math.max(1e-5, speed / this.size);
-    this.arrow.scale.set(arrowSize, arrowSize, 1);
-  }
-
   get showDirection(): boolean {
-    return Lodash.find(this.children, this.arrow) !== undefined;
+    return _.find(this.children, this.arrow) !== undefined;
   }
 
   set showDirection(show: boolean) {
     if (show && !this.showDirection) {
       this.add(this.arrow);
     } if (!show) {
-      Lodash.remove(this.children, this.arrow);
+      _.remove(this.children, this.arrow);
     }
+  }
+
+  get repeating(): boolean {
+    return this.settings.repeating;
+  }
+
+  set repeating(repeating: boolean) {
+    this.settings.repeating = repeating;
   }
 
 }

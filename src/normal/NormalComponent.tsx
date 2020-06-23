@@ -1,8 +1,7 @@
 import React, { RefObject, ReactNode } from 'react';
 import Game from '../game/Game';
 import { Target } from '../game/Target';
-import GameComponent, { TargetSettings } from '../game/GameComponent';
-import Lodash from 'lodash';
+import GameComponent from '../game/GameComponent';
 import { Vector3 } from 'three';
 import Modal from '@material-ui/core/Modal';
 import Typography from '@material-ui/core/Typography'
@@ -16,20 +15,16 @@ interface State {
 }
 
 class NormalComponent extends React.Component<{}, State> {
-  targetSettings: TargetSettings;
-  pace: number;
-
-  paceChanges = [[0.5, 0], [1, 10], [1.5, 20], [2, 30], [2.5, 45], [3, 60], [10, 60 * 5]];
-  sizeChange = [[75, 0], [40, 30], [30, 60], [15, 60 * 5]];
-  durationChange = [[3000, 0], [2500, 30], [2000, 60], [1000, 60 * 5]];
-  speedChange = [[0, 0], [75, 10], [100, 60], [300, 60 * 5]];
+  paceChanges = [[1, 0], [4, 60]];
+  sizeChange = [[8, 0], [4, 60]];
+  durationChange = [[3.5, 0], [1.5, 60]];
+  speedChange = [[0, 0], [10, 60]];
 
   game: Game;
   gameComponentRef: RefObject<GameComponent>;
   gameComponent: GameComponent;
 
-  timer: number;
-  nextTargetTime: number;
+  timer: NodeJS.Timeout;
   gameStartTime: number;
 
   constructor(props: {}) {
@@ -38,65 +33,31 @@ class NormalComponent extends React.Component<{}, State> {
     this.state = { open: false };
   }
 
-  init(): void {
-    this.targetSettings = {
-      maxSize: 100,
-      sizeChangeDistribution: 'linear',
-      sizeChangeValue: 0,
-      sizeChangeDuration: 5000,
-      speed: 50,
-    };
-    this.nextTargetTime = 0;
-    this.pace = 1000;
-  }
-
-  start(): void {
-    this.init();
-    this.timer = setInterval(this.updateSettings, 50) as unknown as number; 
-    this.gameStartTime = this.nextTargetTime = performance.now();
-    this.addTarget();
-  }
-
-  onLifeOut = (): void => {
-    this.setState({ open: true });
-    this.gameComponent.reset();
-    this.gameComponent.pause();
-    clearInterval(this.timer);
-  }
-
   componentDidMount(): void {
-    this.game = this.gameComponentRef.current.game;
     this.gameComponent = this.gameComponentRef.current;
-    this.game.onLifeOut.subscribe(this.onLifeOut);
+    this.game = this.gameComponent.game;
+    this.game.showLifes = true;
     this.start();
   }
 
   componentWillUnmount(): void {
-    clearInterval(this.timer);
+    clearTimeout(this.timer);
+  }
+
+  start = (): void => {
+    this.gameStartTime = performance.now();
+    this.addTarget();
   }
 
   addTarget = (): void => {
-    const targetSettings = { ...this.targetSettings };
-    targetSettings.position = this.game.getRandomPosition();
-    targetSettings.speed = this.gameComponent.pxToScene(targetSettings.speed);
-    targetSettings.maxSize = this.gameComponent.pxToScene(targetSettings.maxSize);
-    targetSettings.direction = new Vector3(Lodash.random(-1, 1, true), Lodash.random(-1, 1, true), 0);
-    this.game.targets.push(new Target(targetSettings));
-  }
+    const settings = this.getSettings(this.gameTime);
 
-  updateSettings = (): void => {
-    const currentTime = performance.now();
-    const gameTime = currentTime - this.gameStartTime;
+    const speed = this.gameComponent.toSceneSpeed(settings.speed);
+    const maxSize = this.gameComponent.toSceneSize(settings.maxSize);
+    const sizeChangeDuration = settings.sizeChangeDuration * 1000;
 
-    this.targetSettings.maxSize = this.getSetting(gameTime, this.sizeChange);
-    this.targetSettings.sizeChangeDuration = this.getSetting(gameTime, this.durationChange);
-    this.targetSettings.speed = this.getSetting(gameTime, this.speedChange);
-
-    if (currentTime > this.nextTargetTime + this.pace) {
-      this.addTarget();
-      this.pace = this.getSetting(gameTime, this.paceChanges);
-      this.nextTargetTime = currentTime + 1000 / this.pace;
-    }
+    this.game.addTarget({ speed, maxSize, sizeChangeDuration });
+    this.timer = setTimeout(this.addTarget, 1000 / settings.pace);
   }
 
   getSetting(gameTime: number, changes: Array<Array<number>>): number {
@@ -110,10 +71,43 @@ class NormalComponent extends React.Component<{}, State> {
     return changes[changes.length - 1][0];
   }
 
+  getSettings(gameTime: number): { pace: number; maxSize: number; sizeChangeDuration: number; speed: number } {
+    const pace = this.getSetting(gameTime, this.paceChanges);
+    const maxSize = this.getSetting(gameTime, this.sizeChange);
+    const sizeChangeDuration = this.getSetting(gameTime, this.durationChange);
+    const speed = this.getSetting(gameTime, this.speedChange);
+
+    return { pace, maxSize, sizeChangeDuration, speed };
+  }
+
+  onLifeOut = (): void => {
+    this.setState({ open: true });
+    setTimeout(() => this.gameComponent.pause(), 0);
+    clearTimeout(this.timer);
+  }
+
   tryAgain = (): void => {
+    this.setState({ open: false });
+    this.game.reset();
     this.gameComponent.resume();
     this.start();
-    this.setState({ open: false });
+  }
+
+  get gameTime(): number {
+    return performance.now() - this.gameStartTime;
+  }
+
+  onTargetClick = (target: Target, pos: Vector3): void => {
+    this.game.removeTarget(target)
+    this.game.addClick({ pos, clickType: 'Success' });
+  }
+
+  onBackgroudClick = (pos: Vector3): void => {
+    this.game.addClick({ pos, clickType: 'Fail' });
+    this.game.removeLife();
+    if (this.game.lifeCount === 0) {
+      this.onLifeOut();
+    }
   }
 
   render(): ReactNode {
@@ -123,13 +117,15 @@ class NormalComponent extends React.Component<{}, State> {
       <div style={{ height: '100vh' }}>
         <GameComponent
           ref={this.gameComponentRef}
-          onClick={(position): void => this.game.onClick(position)}
+          onTargetClick={this.onTargetClick}
+          onBackgroundClick={this.onBackgroudClick}
         >
         </GameComponent>
         <Modal
           open={open}
           onClose={(): void => this.setState({ open: false })}
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          disableBackdropClick={true}
         >
           <div className="paper">
             <Typography style={{ paddingBottom: '20px' }} variant="h6" id="modal-title">

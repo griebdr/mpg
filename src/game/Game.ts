@@ -1,115 +1,227 @@
-import { Target } from "./Target";
+import { Subject } from 'rxjs';
+import { Scene, Vector3, Color, Group, Box3 } from 'three';
 import _ from 'lodash';
-import * as Three from 'three';
-import { Scene, Vector3, Color, Mesh, FontLoader, TextGeometry, Group } from 'three';
-import { GamePhysics, Bounds } from './GamePhysics'
-import helvetikerRegular from '../fonts/helvetiker_regular.typeface.json';
+
 import { Click, ClickSettings } from "./Click";
-import { TargetSettings } from "./GameComponent";
+import { Target, TargetSettings } from './Target';
 import Heart from "./Heart";
 
-import { Subject } from 'rxjs';
-import { meshPool } from "./MeshPool";
+
+export interface Bounds {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
 
 export default class Game extends Scene {
-  private bounds2: Bounds = { bottom: 0, left: 0, right: 0, top: 0 };
-  private score2 = 0;
+  private _bounds: Bounds = { bottom: 0, left: 0, right: 0, top: 0 };
 
-  targets: Target[] = [];
-  clicks: Click[] = [];
+  private lifes = new Group();
+  private totalLifeCount = 10;
 
-  gamePhysics = new GamePhysics();
-  hearts = new Group();
-  lifeCount = 10;
   onLifeOut = new Subject<void>();
-  scoreMesh: Mesh;
+  score = 0;
 
   constructor() {
     super();
 
     this.background = new Color(0xf9f9f9);
-    // this.add(this.hearts);
-    // this.addLifes();
-    this.gamePhysics.circles = this.targets;
-  }
-
-  reset(): void {
-    _.remove(this.targets);
-    _.remove(this.clicks);
-    _.remove(this.children);
-
-    this.score = 0;
-
+    this.add(this.lifes);
     this.addLifes();
+    this.showLifes = false;
   }
 
   update(time: number): void {
-    this.gamePhysics.updateState(time);
-    this.clicks.forEach(click => click.update(time));
+    const targets = this.targets;
+    const clicks = this.clicks;
 
-    for (let i = 0; i < this.clicks.length; i++) {
-      const click = this.clicks[i];
-      if (click.changeValue > 1) {
-        this.removeClick(click);
-        break;
+    targets.forEach(target => target.updatePosition(time));
+    this.handleCollision();
+    targets.forEach(target => target.updateSize(time));
+    this.separateCircles(targets);
+
+    clicks.forEach(click => click.update(time));
+  }
+
+  handleCollision(): void {
+    const circles = this.targets
+    for (const circle of circles) {
+      if (Math.abs(circle.position.x) + circle.size - this.bounds.right > 0) {
+        circle.direction = new Vector3(-circle.direction.x, circle.direction.y, 0);
+      }
+
+      if (Math.abs(circle.position.y) + circle.size - this.bounds.top > 0) {
+        circle.direction = new Vector3(circle.direction.x, -circle.position.y, 0);
       }
     }
 
-    for (let i = 0; i < this.targets.length; i++) {
-      const target = this.targets[i];
-      if (target.sizeChangeValue > 1 && target.size === 0) {
-        this.removeTarget(target);
-        break;
+    for (let i = 0; i < circles.length; i++) {
+      const circle = circles[i];
+      for (let j = i + 1; j < circles.length; j++) {
+        const circle2 = circles[j];
+        if (circle.size + circle2.size - circle.position.distanceTo(circle2.position) > 0) {
+          const v1 = circle.direction.clone();
+          const v2 = circle2.direction.clone();
+          const x1 = circle.position.clone();
+          const x2 = circle2.position.clone();
+          circle.direction = v1.clone().sub(x1.clone().sub(x2).multiplyScalar(v1.clone().sub(v2).dot(x1.clone().sub(x2)) / Math.pow(x1.clone().sub(x2).length(), 2)));
+          circle2.direction = v2.clone().sub(x2.clone().sub(x1).multiplyScalar(v2.clone().sub(v1).dot(x2.clone().sub(x1)) / Math.pow(x2.clone().sub(x1).length(), 2)));
+        }
       }
     }
   }
 
+  separateCircles(circles: Target[]): void {
+    const changedCircles: Target[] = [];
+
+    for (const circle of circles) {
+      let diff = Math.abs(circle.position.x) + circle.size - this.bounds.right;
+      if (diff > 0) {
+        circle.position.x -= diff * Math.sign(circle.position.x);
+        changedCircles.push(circle);
+      }
+      diff = Math.abs(circle.position.y) + circle.size - this.bounds.top;
+      if (diff > 0) {
+        circle.position.y -= diff * Math.sign(circle.position.y);
+        changedCircles.push(circle);
+      }
+    }
+
+    for (let i = 0; i < circles.length; i++) {
+      const circle = circles[i];
+      for (let j = i + 1; j < circles.length; j++) {
+        const circle2 = circles[j];
+        const overlapSize = circle.size + circle2.size - circle.position.distanceTo(circle2.position);
+        if (overlapSize > 0) {
+          const v1 = circle.position.clone().sub(circle2.position).normalize().multiplyScalar(overlapSize / 2 + 1e-10);
+          circle.position.add(v1);
+          circle2.position.add(v1.negate());
+          changedCircles.push(circle, circle2);
+        }
+      }
+    }
+
+    if (changedCircles.length > 0) {
+      this.separateCircles(_.uniq(changedCircles));
+    }
+  }
+
+  reset(): void {
+    this.targets.forEach(target => target.visible = false);
+    this.lifes.children.forEach((heart: Heart) => heart.visible = true);
+  }
 
   onClick(position: Vector3): void {
     const target = this.getTargetAt(position);
 
-    if (target !== undefined) {
-      this.removeTarget(target);
-      this.addClick({ position, color: new Color(0x00ff00) });
+    if (target) {
+      this.removeTarget(target)
+      this.addClick({ pos: position, clickType: 'Success' });
     } else {
-      this.addClick({ position, color: new Color(0xff0000) });
-      this.lifes.pop();
-      if (this.lifes.length === 0) {
+      this.addClick({ pos: position, clickType: 'Fail' });
+      this.removeLife();
+      if (this.lifeCount === 0) {
         this.onLifeOut.next();
       }
     }
-
-
   }
 
+
   addTarget(targetSettings?: TargetSettings): Target {
-    const target = meshPool.getTarget();
-    
-    target.settings = targetSettings;
-    this.targets.push(target);
-    this.add(target);
+    let target: Target;
+
+    if (!targetSettings.pos) {
+      targetSettings.pos = this.getRandomPosition();
+    }
+
+    if (!targetSettings.direction) {
+      targetSettings.direction = new Vector3(_.random(-1, 1, true), _.random(-1, 1, true), 0);
+    }
+
+    if (this.hiddenTargets.length > 0) {
+      target = this.hiddenTargets[0];
+      target.visible = true;
+    } else {
+      target = new Target();
+      this.add(target);
+    }
+
+    target.resetSettings(targetSettings);
+
     return target;
   }
 
   removeTarget(target: Target): void {
-    _.remove(this.targets, target);
-    this.remove(target);
-    meshPool.addTarget(target);
+    target.visible = false;
   }
 
   addClick(clickSettings: ClickSettings): Click {
-    const click = meshPool.getClick();
-    click.settings = clickSettings;
-    this.clicks.push(click);
-    this.add(click);
+    let click: Click;
+
+    if (this.hiddenClicks.length > 0) {
+      click = this.hiddenClicks[0];
+      click.visible = true;
+    } else {
+      click = new Click();
+      this.add(click);
+    }
+
+    click.resetSettings(clickSettings);
+
     return click;
   }
 
   removeClick(click: Click): void {
-    _.remove(this.clicks, click);
-    this.remove(click);
-    _.remove(this.children, click);
-    meshPool.addClick(click);
+    click.visible = false;
+  }
+
+  addLifes(): void {
+    const spaceBetween = 0.03;
+    this.add(this.lifes);
+
+    const heart = new Heart();
+    const box = new Box3().setFromObject(heart);
+    const width = box.max.x - box.min.x;
+
+    let x = 0;
+    heart.position.set(0, 0, 0)
+    this.lifes.add(heart);
+    x -= width + spaceBetween;
+
+    for (let i = 1; i < this.totalLifeCount; i++) {
+      const heart = new Heart();
+      heart.position.set(x, 0, 0);
+      this.lifes.add(heart);
+      x -= width + spaceBetween;
+    }
+  }
+
+  updateLifesPosition(): void {
+    const margin = 0.03;
+    const heart = this.lifes.children[0] as Heart;
+
+    heart.geometry.computeBoundingBox();
+    const boundingBox = heart.geometry.boundingBox;
+
+    const translateX = boundingBox.max.x * heart.scale.x;
+    const translateY = boundingBox.max.y * heart.scale.y;
+    
+    this.lifes.position.set(this.bounds.right - translateX - margin, this.bounds.top - translateY - margin, 0);
+  }
+
+  removeLife(): void {
+    for (let i = this.lifes.children.length - 1; i >= 0; i--) {
+      const heart = this.lifes.children[i] as Heart;
+      if (heart.visible) {
+        heart.visible = false;
+        return;
+      }
+    }
+  }
+
+  get lifeCount(): number {
+    return this.lifes.children.filter(life => (life instanceof Heart) && life.visible).length;
   }
 
   getTargetAt(position: Vector3): Target {
@@ -135,89 +247,39 @@ export default class Game extends Scene {
     }
   }
 
-  getText(text: string, position: Vector3): Mesh {
-    const loader = new FontLoader();
-    const font = loader.parse(helvetikerRegular);
 
-    const geometry = new TextGeometry(text, {
-      font,
-      size: 1,
-      height: 0,
-    });
 
-    const textMaterial = new Three.MeshStandardMaterial(
-      { color: 0xff0000 }
-    );
-
-    const mesh = new Mesh(geometry, textMaterial);
-
-    mesh.position.set(position.x, position.y, position.z);
-    mesh.scale.set(0.2, 0.2, 1);
-
-    return mesh;
+  get targets(): Target[] {
+    return this.children.filter(value => (value instanceof Target) && value.visible) as Target[];
   }
 
-  addLifes(): void {
-    _.remove(this.lifes);
-
-    let x = this.bounds.right - 0.2;
-
-    for (let i = 0; i < this.lifeCount; i++) {
-      const heart = new Heart();
-      heart.position.set(x, this.bounds.top - 0.2, 0);
-      this.lifes.push(heart);
-      x -= 0.3;
-    }
+  get hiddenTargets(): Target[] {
+    return this.children.filter(value => (value instanceof Target) && !value.visible) as Target[];
   }
 
-  set score(score: number) {
-    // this.score2 = score;
-
-
-    // if (!this.scoreMesh) {
-    //   this.scoreMesh = this.getText(this.score + '', new Vector3(this.bounds.left + 0.1, this.bounds.top - 0.25, 0));
-    //   this.add(this.scoreMesh);
-    // } else {
-    //   const geometry = new TextGeometry(this.score + '', {
-    //     font: this.font,
-    //     size: 1,
-    //     height: 0,
-    //     curveSegments: 10,
-
-    //   });
-    //   this.scoreMesh.geometry = geometry;
-    // }
-
+  get clicks(): Click[] {
+    return this.children.filter(value => (value instanceof Click) && value.visible) as Click[];
   }
 
-  get score(): number {
-    return this.score2;
-  }
-
-  get lifes(): Heart[] {
-    return this.hearts.children as Heart[];
+  get hiddenClicks(): Click[] {
+    return this.children.filter(value => (value instanceof Click) && !value.visible) as Click[];
   }
 
   get bounds(): Bounds {
-    return this.bounds2;
+    return this._bounds;
   }
 
   set bounds(bounds: Bounds) {
-    this.bounds2 = bounds;
-    this.addLifes();
-    this.gamePhysics.bounds = bounds;
+    this._bounds = bounds;
+    this.updateLifesPosition();
   }
 
   get showLifes(): boolean {
-    return _.find(this.children, this.hearts) !== undefined;
+    return this.lifes.visible;
   }
 
   set showLifes(show: boolean) {
-    if (show) {
-      this.add(this.hearts);
-    } else {
-      this.remove(this.hearts);
-    }
+    this.lifes.visible = show;
   }
 
 }

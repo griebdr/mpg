@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { ReactNode } from 'react';
 import './App.css';
 import GameTester from './game-tester/GameTester';
 import CustomComponent from './custom/CustomComponent';
@@ -9,7 +9,7 @@ import { BrowserRouter as Router, Route } from 'react-router-dom';
 
 class App extends React.Component {
 
-  render() {
+  render(): ReactNode {
     return (
       <div className="Game-container">
         <Router>

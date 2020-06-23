@@ -3,14 +3,15 @@ import React, { RefObject, ReactNode } from 'react';
 import clsx from 'clsx';
 
 import Game from '../game/Game';
-import { Target } from '../game/Target';
-import GameComponent, { TargetSettings } from '../game/GameComponent';
+import GameComponent from '../game/GameComponent';
+import { TargetSettings, Target } from '../game/Target';
 import './CustomComponent.css';
-import _ from 'lodash';
+// import _ from 'lodash';
 
-import { IconButton, withStyles, WithStyles, createStyles, Select, MenuItem, InputLabel, Drawer, FormControl, TextField, FormLabel, FormGroup, InputAdornment } from '@material-ui/core';
+import { IconButton, withStyles, WithStyles, createStyles, Drawer, FormControl, TextField, FormGroup, InputAdornment, Slider, Typography } from '@material-ui/core';
 import { ArrowBack, ArrowForward } from '@material-ui/icons'
 import { Vector3 } from 'three';
+// import {  } from 'three';
 
 const drawerWidth = 240;
 
@@ -32,7 +33,6 @@ const styles = createStyles({
   settingInput: {
     margin: '12px 0px',
   },
-
 })
 
 type Props = WithStyles<typeof styles>
@@ -44,98 +44,78 @@ interface State {
   targetSettings: TargetSettings;
 }
 
-interface DifficultySetting {
-  pace: number;
-  size: number;
-  duration: number;
-  speed: number;
-}
-
 class CustomComponent extends React.Component<Props, State> {
   gameComponentRef: RefObject<GameComponent>;
   gameComponent: GameComponent;
   game: Game;
 
-  selectedTarget: Target;
-  targetSettings: TargetSettings;
-
+  targetSettings: TargetSettings = {};
   timer: unknown;
+  initialDifficulty = 0.5;
 
-  difficultyLevelValues = new Map<number, DifficultySetting>(
-    [
-      [1, { pace: 0, size: 0, duration: 0, speed: 0 }],
-      [2, { pace: 0, size: 0, duration: 0, speed: 0 }],
-      [3, { pace: 0, size: 0, duration: 0, speed: 0 }],
-      [4, { pace: 0, size: 0, duration: 0, speed: 0 }],
-      [5, { pace: 2, size: 30, duration: 2.5, speed: 50 }],
-      [6, { pace: 0, size: 0, duration: 0, speed: 0 }],
-      [7, { pace: 0, size: 0, duration: 0, speed: 0 }],
-      [8, { pace: 0, size: 0, duration: 0, speed: 0 }],
-      [9, { pace: 0, size: 0, duration: 0, speed: 0 }],
-      [10, { pace: 0, size: 0, duration: 0, speed: 0 }],
-    ]
-  );
-
+  difficultyValues = {
+    minPace: 1, maxPace: 3,
+    minSize: 4, maxSize: 8,
+    minDuration: 1.5, maxDuration: 3.5,
+    minSpeed: 1, maxSpeed: 10,
+  }
 
   constructor(props: Props) {
     super(props);
     this.gameComponentRef = React.createRef();
-    this.targetSettings = {
-      maxSize: 100,
-      sizeChangeDistribution: 'linear',
-      sizeChangeValue: 0,
-      sizeChangeDuration: 5,
-      speed: 50,
-    };
+
+    const difficulties = this.getDifficulties(this.initialDifficulty);
+    this.targetSettings = { sizeChangeDuration: difficulties.sizeChangeDuration, speed: difficulties.speed, maxSize: difficulties.maxSize }
+
     this.state = {
       open: true,
-      pace: 1,
-      difficultyLevel: 5,
+      pace: difficulties.pace,
+      difficultyLevel: this.initialDifficulty,
       targetSettings: this.targetSettings,
     };
   }
 
   componentDidMount(): void {
-    this.game = this.gameComponentRef.current.game;
     this.gameComponent = this.gameComponentRef.current;
-    this.gameComponent.gameMode = 'normal';
-    this.game.showLifes = false;
-    this.timer = setInterval(this.addTarget, this.state.pace * 1000);
+    this.game = this.gameComponent.game;
     this.onDifficultyLevelChange(this.state.difficultyLevel);
+    this.addTarget();
   }
 
   componentWillUnmount(): void {
-    clearInterval(this.timer as number);
+    clearTimeout(this.timer as number);
   }
 
   addTarget = (): void => {
-    const targetSettings = { ...this.targetSettings };
-    targetSettings.position = this.game.getRandomPosition();
-    targetSettings.speed = this.gameComponent.pxToScene(targetSettings.speed);
-    targetSettings.maxSize = this.gameComponent.pxToScene(targetSettings.maxSize);
-    targetSettings.sizeChangeDuration *= 1000;
-    targetSettings.direction = new Vector3(_.random(-1, 1, true), _.random(-1, 1, true), 0);
-    this.game.addTarget(targetSettings);
+    const speed = this.gameComponent.toSceneSpeed(this.targetSettings.speed);
+    const maxSize = this.gameComponent.toSceneSize(this.targetSettings.maxSize);
+    const sizeChangeDuration = this.targetSettings.sizeChangeDuration * 1000;
+
+    this.game.addTarget({ speed, maxSize, sizeChangeDuration });
+    this.timer = setTimeout(this.addTarget, 1000 / this.state.pace);
+  }
+
+  getDifficulties(difficultyLevel: number): { pace: number; maxSize: number; sizeChangeDuration: number; speed: number } {
+    return {
+      pace: difficultyLevel * (this.difficultyValues.maxPace - this.difficultyValues.minPace) + this.difficultyValues.minPace,
+      maxSize: (1 - difficultyLevel) * (this.difficultyValues.maxSize - this.difficultyValues.minSize) + this.difficultyValues.minSize,
+      sizeChangeDuration: (1 - difficultyLevel) * (this.difficultyValues.maxDuration - this.difficultyValues.minDuration) + this.difficultyValues.minDuration,
+      speed: difficultyLevel * (this.difficultyValues.maxSpeed - this.difficultyValues.minSpeed) + this.difficultyValues.minSpeed
+    }
   }
 
   onDifficultyLevelChange = (difficultyLevel: number): void => {
-    this.setState({ difficultyLevel: difficultyLevel });
+    const difficulties = this.getDifficulties(difficultyLevel);
 
-    this.onPaceChange(this.difficultyLevelValues.get(difficultyLevel).pace);
-    this.onMaxSizeChange(this.difficultyLevelValues.get(difficultyLevel).size);
-    this.onSizeChangeDurationChange(this.difficultyLevelValues.get(difficultyLevel).duration);
-    this.onSpeedChange(this.difficultyLevelValues.get(difficultyLevel).speed);
+    this.targetSettings.maxSize = difficulties.maxSize;
+    this.targetSettings.sizeChangeDuration = difficulties.sizeChangeDuration;
+    this.targetSettings.speed = difficulties.speed;
+
+    this.setState({ difficultyLevel, pace: difficulties.pace, targetSettings: this.targetSettings });
   }
 
   onPaceChange = (pace: number): void => {
     this.setState({ pace: pace });
-
-    if (!isNaN(pace)) {
-      clearInterval(this.timer as number);
-      if (pace > 0) {
-        this.timer = setInterval(this.addTarget, 1000 / pace);
-      }
-    }
   }
 
   onMaxSizeChange = (size: number): void => {
@@ -163,6 +143,15 @@ class CustomComponent extends React.Component<Props, State> {
     setTimeout(this.gameComponent.onWindowResize, 0);
   }
 
+  onTargetClick = (target: Target, pos: Vector3): void => {
+    this.game.removeTarget(target)
+    this.game.addClick({ pos, clickType: 'Success' });
+  }
+
+  onBackgroudClick = (pos: Vector3): void => {
+    this.game.addClick({ pos, clickType: 'Fail' });
+  }
+
   render(): ReactNode {
     const { maxSize, speed, sizeChangeDuration } = this.state.targetSettings;
     const { open, pace, difficultyLevel } = this.state;
@@ -179,16 +168,24 @@ class CustomComponent extends React.Component<Props, State> {
               <ArrowBack />
             </IconButton>
           </div>
-          <FormControl style={{ margin: 20, marginBottom: 40 }} variant="outlined">
-            <InputLabel id="difficulty">Difficulty Level</InputLabel>
-            <Select
-              labelId="difficulty" value={difficultyLevel} label="Difficulty Level"
-              onChange={(e): void => this.onDifficultyLevelChange(Number.parseFloat(e.target.value as string))}>
-              {Array.from(this.difficultyLevelValues).map(([key]) => <MenuItem key={key} value={key}>{key}</MenuItem>)}
-            </Select>
+          <FormControl style={{ margin: 12, marginBottom: 30 }} variant="outlined">
+            <Typography id="discrete-slider" gutterBottom>
+              Difficulty
+            </Typography>
+            <Slider
+              defaultValue={this.initialDifficulty}
+              step={0.1}
+              marks
+              min={0}
+              max={1}
+              value={difficultyLevel}
+              onChange={(e, v): void => this.onDifficultyLevelChange(v as number)}
+            />
           </FormControl>
           <FormGroup className={classes.settingsControl}>
-            <FormLabel>Settings</FormLabel>
+            <Typography gutterBottom>
+              Settings
+            </Typography>
             <TextField
               className={classes.settingInput} variant="outlined" label="Pace" type="number"
               value={pace}
@@ -223,10 +220,11 @@ class CustomComponent extends React.Component<Props, State> {
             />
           </FormGroup>
         </Drawer>
-        <main className={clsx(classes.mainContent, {[classes.mainContentShift]: !open})}>
+        <main className={clsx(classes.mainContent, { [classes.mainContentShift]: !open })}>
           <GameComponent
             ref={this.gameComponentRef}
-            onClick={(position): void => this.game.onClick(position)}
+            onTargetClick={this.onTargetClick}
+            onBackgroundClick={this.onBackgroudClick}
           >
           </GameComponent>
         </main>

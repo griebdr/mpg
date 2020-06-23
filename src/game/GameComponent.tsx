@@ -1,11 +1,12 @@
 import React, { RefObject, ReactNode } from 'react';
-import './GameComponent.css';
-import Game from './Game'
+
 import * as Three from 'three';
 import { PerspectiveCamera, WebGLRenderer, Vector3 } from 'three';
 import { Target } from './Target';
-import { Bounds } from './GamePhysics';
+
 // import _ from 'lodash';
+import './GameComponent.css';
+import Game, { Bounds } from './Game'
 
 interface Props {
   onTargetClick?: (target: Target, position: Vector3) => void;
@@ -15,20 +16,7 @@ interface Props {
   onClick?: (position: Vector3) => void;
 }
 
-export type TargetSizeDistribution = 'linear' | 'constant';
-export type GameMode = 'normal' | 'testing';
-
-export interface TargetSettings {
-  minSize?: number;
-  maxSize?: number;
-  sizeChangeDuration?: number;
-  sizeChangeDistribution?: TargetSizeDistribution;
-  sizeChangeValue?: number;
-  speed?: number;
-  position?: Vector3;
-  direction?: Vector3;
-  showDirection?: boolean;
-}
+export type GameMode = 'Normal' | 'Custom' | 'Testing';
 
 class GameComponent extends React.Component<Props> {
   game: Game;
@@ -36,24 +24,25 @@ class GameComponent extends React.Component<Props> {
   canvasRef: RefObject<HTMLCanvasElement>;
 
   bounds: Bounds;
+  pace = Infinity;
 
   renderer: WebGLRenderer;
   camera: PerspectiveCamera;
 
   private selectedTarget: Target;
-  private shouldDragTarget: boolean;
-  private shouldDragDirection: boolean;
+  private shouldDragTarget = false;
+  private shouldDragDirection = false;
 
   mouseDownPosition: Vector3;
   previousMousePosition: Vector3;
 
   animationFrame: number;
-  lastUpdateTime = performance.now();
+  lastUpdateTime = 0;
+  paused = false;
 
   constructor(props: Props) {
     super(props);
     this.canvasRef = React.createRef();
-    this.shouldDragTarget = this.shouldDragDirection = false;
   }
 
   componentDidMount(): void {
@@ -61,42 +50,50 @@ class GameComponent extends React.Component<Props> {
     this.renderer = new WebGLRenderer({ antialias: true, canvas: this.canvasRef.current });
     this.camera = new PerspectiveCamera(50, canvas.width / canvas.height, 0.1, 2000);
     this.camera.position.z = 5;
-    
+
     this.game = new Game();
 
     this.onWindowResize();
     window.onresize = this.onWindowResize;
-    
-    this.animate();
+
+    this.animate(0);
   }
 
   componentWillUnmount(): void {
     cancelAnimationFrame(this.animationFrame);
   }
 
-  animate = (): void => {
+  animate = (time: number): void => {
     this.animationFrame = requestAnimationFrame(this.animate);
 
-    const currentTime = performance.now();
-    const diff = currentTime - this.lastUpdateTime;
-    this.game.update(diff);
+    if (!this.paused) {
+      this.game.update(time - this.lastUpdateTime);
+    }
 
-    this.lastUpdateTime = currentTime;
     this.renderer.render(this.game, this.camera);
+    this.lastUpdateTime = time;
   }
 
   reset(): void {
-    this.game.reset();
     cancelAnimationFrame(this.animationFrame);
-    this.animate();
+    this.game.reset();
+    this.animate(0);
+  }
+
+  stop(): void {
+    cancelAnimationFrame(this.animationFrame);
+  }
+
+  start(): void {
+    this.animate(0);
   }
 
   pause(): void {
-    cancelAnimationFrame(this.animationFrame);
+    this.paused = true;
   }
 
   resume(): void {
-    this.animate();
+    this.paused = false;
   }
 
   onWindowResize = (): void => {
@@ -129,6 +126,54 @@ class GameComponent extends React.Component<Props> {
     )
   }
 
+  toSceneSize(value: number): number {
+    const area = (this.bounds.top * 2) * (this.bounds.right * 2);
+
+    // r^2 * PI = area;
+    // r = sqrt(area / PI)
+    // r ... 100
+    // x ... value
+
+    const x = Math.sqrt(area / Math.PI) * value / 100.0;
+
+    return x;
+  }
+
+  fromSceneSize(value: number): number {
+    const area = (this.bounds.top * 2) * (this.bounds.right * 2);
+
+    // r^2 * PI = area;
+    // r = sqrt(area / PI)
+    // r     ... 100
+    // value ... x
+
+    const x = value * 100 / Math.sqrt(area / Math.PI);
+
+    return x;
+  }
+
+  toSceneSpeed(value: number): number {
+    const diagonal = new Vector3(this.bounds.left, this.bounds.right, 0).distanceTo(new Vector3(this.bounds.right, this.bounds.top, 0));
+
+    // diagonal ... 100
+    // x        ... value
+
+    const x = diagonal * value / 100;
+
+    return x;
+  }
+
+  fromSceneSpeed(value: number): number {
+    const diagonal = new Vector3(this.bounds.left, this.bounds.right, 0).distanceTo(new Vector3(this.bounds.right, this.bounds.top, 0));
+
+    // diagonal ... 100
+    // value    ... x
+
+    const x = 100 * value / diagonal;
+
+    return x;
+  }
+
   pxToScene(value: number): number {
     return value / (this.canvasRef.current.width / (2 * this.bounds.right));
   }
@@ -155,31 +200,22 @@ class GameComponent extends React.Component<Props> {
     }
   }
 
-  onMouseUp = (event: React.MouseEvent): void => {
-    if (this.mouseDownPosition === undefined) {
-      return;
-    }
-
+  onClick = (event: React.MouseEvent): void => {
     const position = this.clickToScenePos(event.pageX, event.pageY);
     const target = this.game.getTargetAt(position);
 
-    if (this.mouseDownPosition.distanceTo(position) < this.pxToScene(30)) {
-      if (target === undefined && this.props.onBackgroundClick !== undefined) {
-        this.props.onBackgroundClick(position);
-      } else if (this.props.onTargetClick !== undefined) {
+    if (target) {
+      if (this.props.onTargetClick) {
         this.props.onTargetClick(target, position);
+      }
+    } else {
+      if (this.props.onBackgroundClick) {
+        this.props.onBackgroundClick(position);
       }
     }
 
     this.shouldDragTarget = false;
     this.shouldDragDirection = false;
-  }
-
-  onClick = (event: React.MouseEvent): void => {
-    const position = this.clickToScenePos(event.pageX, event.pageY);
-    if (this.props.onClick) {
-      this.props.onClick(position);
-    }
   }
 
   onMouseMove = (event: React.MouseEvent): void => {
@@ -198,13 +234,14 @@ class GameComponent extends React.Component<Props> {
     this.previousMousePosition = currentMousePosition;
   }
 
+
   render(): ReactNode {
     return (
       <canvas
         ref={this.canvasRef}
         onClick={this.onClick}
         onMouseDown={this.onMouseDown}
-        onMouseUp={this.onMouseUp}
+        // onMouseUp={this.onMouseUp}
         onMouseMove={this.onMouseMove}
       >
       </canvas>

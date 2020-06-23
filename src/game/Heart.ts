@@ -15,7 +15,9 @@ export default class Heart extends Mesh {
     this.geometry = geometry;
     this.material = material;
 
-    this.scale.set(0.15, 0.15, 1);
+
+
+    this.scale.set(0.10, 0.10, 1);
   }
 
 }

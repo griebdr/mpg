@@ -38,6 +38,7 @@ export class GamePhysics {
     });
   }
 
+
   updateSize(time: number): void {
     this.circles.forEach(circle => {
       circle.sizeChangeValue += time / circle.sizeChangeDuration;

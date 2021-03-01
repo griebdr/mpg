@@ -21,7 +21,7 @@
     "react-scripts": "3.4.1",
     "rxjs": "6.5.2",
     "stats-js": "^1.0.1",
-    "three": "0.104.0",
+    "three": "0.125.0",
     "typeface-roboto": "0.0.54",
     "typescript": "3.4.4"
   },
